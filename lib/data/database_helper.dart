@@ -3,10 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'seed_data.dart';
 
-/// Abre (e cria, na primeira execução) o banco SQLite local.
-///
-/// Zero-config: a tabela é criada em [_onCreate] e já recebe a carga
-/// inicial de [SeedData], sem nenhuma configuração manual.
+
 class DatabaseHelper {
   DatabaseHelper._();
 

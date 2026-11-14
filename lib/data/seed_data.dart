@@ -1,7 +1,6 @@
 import '../models/ocorrencia.dart';
 
-/// Carga inicial inserida automaticamente na primeira execução (onCreate),
-/// para o app já abrir com dados de demonstração.
+
 class SeedData {
   SeedData._();
 

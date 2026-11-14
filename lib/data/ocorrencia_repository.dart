@@ -1,8 +1,7 @@
 import '../models/ocorrencia.dart';
 import 'database_helper.dart';
 
-/// Contrato da camada de dados. O Provider depende desta abstração,
-/// o que permite trocar o SQLite por um fake nos testes de unidade.
+
 abstract class OcorrenciaRepository {
   Future<List<Ocorrencia>> getAll();
   Future<Ocorrencia> insert(Ocorrencia ocorrencia);
@@ -10,7 +9,7 @@ abstract class OcorrenciaRepository {
   Future<void> delete(int id);
 }
 
-/// Implementação com SQLite (sqflite). Todas as operações são assíncronas.
+
 class SqliteOcorrenciaRepository implements OcorrenciaRepository {
   SqliteOcorrenciaRepository(this._dbHelper);
 
