@@ -1,291 +1,152 @@
-Como o Rota Segura funciona
+# 🛡️ Rota Segura — CitizenTech FIAP
 
-Este documento explica, por dentro, como o app foi construído: o que cada pasta faz, como os dados circulam entre as camadas e onde cada requisito da prova está implementado. Serve também como roteiro para apresentar o projeto.
+> **A próxima grande inovação pode estar na sua rua.**
+> Um app para o cidadão mapear pontos inseguros do bairro e ajudar a construir caminhos mais seguros.
 
-1. Visão geral
+---
 
-O Rota Segura é um app de cadastro colaborativo de ocorrências: pontos inseguros que o cidadão encontra no bairro (rua sem iluminação, local de assalto, calçada quebrada, alagamento etc.).
+## 1. Identificação
 
-Cada ocorrência tem:
+| | |
+|---|---|
+| **Projeto** | Rota Segura |
+| **Disciplina** | Desenvolvimento Cross-Platform com Flutter — Prova DP 2026.2 |
+| **Curso** | Sistemas de Informação — 3º ano |
+| **Integrante** | Rafael Lima de Oliveira — **RM 88755** |
 
-Campo	Exemplo	Observação
-Título	"Rua inteira sem iluminação"	5 a 60 caracteres
-Categoria	Iluminação precária	enum CategoriaOcorrencia
-Descrição	"Os postes estão apagados há duas semanas..."	15 a 500 caracteres
-Bairro	Capão Redondo	obrigatório
-Ponto de referência	"Próximo ao ponto de ônibus"	opcional
-Período mais crítico	Noite	enum Periodo
-Nível de risco	Alto	enum NivelRisco (1, 2, 3)
-Anônima?	sim/não	switch
-Resolvida?	sim/não	muda pelo detalhe, lista ou edição
-Data de registro	13/11/2026 às 19:47	preenchida automaticamente
+---
 
-Com esses dados o app faz o CRUD completo e calcula indicadores para o dashboard.
+## 2. Sobre o Projeto (CitizenTech & ODS)
 
-2. Arquitetura em camadas
-┌──────────────────────────────────────────────┐
-│  UI (screens/ + widgets/)                    │  ← só exibe e captura ações
-│  Home · Lista · Formulário · Detalhes · Sobre│
-└───────────────┬──────────────────────────────┘
-                │ context.watch / Consumer / context.select  (lê estado)
-                │ context.read<OcorrenciaProvider>()          (chama ações)
-┌───────────────▼──────────────────────────────┐
-│  Estado (providers/ocorrencia_provider.dart) │  ← regras, indicadores, filtros
-│  ChangeNotifier + notifyListeners()          │
-└───────────────┬──────────────────────────────┘
-                │ chama a interface (async/await)
-┌───────────────▼──────────────────────────────┐
-│  Dados (data/)                               │
-│  OcorrenciaRepository (interface)            │
-│  SqliteOcorrenciaRepository (implementação)  │
-│  DatabaseHelper (abre/cria o banco + seed)   │
-└───────────────┬──────────────────────────────┘
-                │ sqflite
-┌───────────────▼──────────────────────────────┐
-│  SQLite local: rota_segura.db                │
-└──────────────────────────────────────────────┘
+### O problema real
+Todos os dias milhares de pessoas voltam para casa a pé, à noite, passando por **ruas sem iluminação, calçadas quebradas, terrenos abandonados e pontos conhecidos de assalto e assédio**. Essa informação existe, mas circula só no boca a boca e quase nunca chega organizada a quem pode resolver (subprefeitura, zeladoria, segurança pública). O problema é mais grave nas periferias, que já têm menos infraestrutura.
 
-        models/ocorrencia.dart  ← usado por todas as camadas
+### Público-alvo
+- Pedestres, estudantes e trabalhadores que se deslocam à noite ou de madrugada;
+- Associações de moradores e lideranças comunitárias;
+- Subprefeituras e órgãos de zeladoria/segurança, que podem usar os dados para priorizar ações.
 
-Ideia central: nenhuma tela fala com o banco. A tela pede ao Provider, o Provider pede ao Repository e o Repository fala com o SQLite. Quando o dado muda, o Provider chama notifyListeners() e todas as telas que estão "ouvindo" se redesenham sozinhas.
+### Funcionalidades do MVP
+- **Dashboard** com indicadores em tempo real: total, em aberto, resolvidas, críticas (risco alto), bairro com mais alertas e % de resolução;
+- **Cadastro de ocorrências** com título, categoria, descrição, bairro, ponto de referência, período mais crítico, nível de risco, relato anônimo e confirmação de veracidade;
+- **Listagem** com filtros por categoria, opção de ocultar resolvidas, *pull-to-refresh* e menu de ações rápidas (editar, resolver/reabrir, excluir);
+- **Detalhes** com alerta de ponto crítico, edição e exclusão com confirmação;
+- **Tela Sobre** com o problema, público-alvo e os ODS atendidos;
+- Banco já vem com **dados de demonstração** na primeira execução.
 
-3. Estrutura de pastas
+### ODS da ONU conectados
+| ODS | Como o app contribui |
+|---|---|
+| **ODS 11 — Cidades e comunidades sustentáveis** | Mapeia pontos inseguros para tornar os deslocamentos urbanos mais seguros e orientar a zeladoria. |
+| **ODS 16 — Paz, justiça e instituições eficazes** | Dá visibilidade a locais de violência e ajuda o poder público a priorizar ações com dados do cidadão. |
+| **ODS 10 — Redução das desigualdades** | Dá voz a bairros periféricos, historicamente com menos iluminação e infraestrutura. |
+
+---
+
+## 3. Arquitetura e Persistência Escolhida
+
+**Opção escolhida: B — Persistência local com SQLite (`sqflite`).**
+Não há backend, chave de API ou servidor externo: o banco é criado automaticamente no aparelho.
+
+```
 lib/
-├── main.dart                 → ponto de entrada; registra os Providers
-├── app.dart                  → MaterialApp (tema + rotas)
+├── main.dart                      # MultiProvider (Repository + ChangeNotifier)
+├── app.dart                       # MaterialApp, tema e rotas
 ├── core/
-│   ├── routes/app_routes.dart → rotas nomeadas e argumentos
-│   ├── theme/app_theme.dart   → cores, ThemeData, ícones/cores por enum
-│   └── utils/
-│       ├── validators.dart    → regras de validação do formulário
-│       └── date_utils.dart    → formatação de datas
-├── models/
-│   └── ocorrencia.dart        → entidade + enums + toMap/fromMap
+│   ├── routes/app_routes.dart     # Rotas nomeadas + passagem de argumentos
+│   ├── theme/app_theme.dart       # ThemeData, cores e estilos padronizados
+│   └── utils/                     # Validações e formatação de datas
+├── models/ocorrencia.dart         # Entidade de domínio + enums
 ├── data/
-│   ├── database_helper.dart   → abre o banco, cria a tabela, insere seed
-│   ├── seed_data.dart         → 5 ocorrências de exemplo
-│   └── ocorrencia_repository.dart → interface + implementação SQLite
-├── providers/
-│   └── ocorrencia_provider.dart → estado global do app
-├── screens/                   → as 5 telas
-└── widgets/                   → componentes reutilizáveis
+│   ├── database_helper.dart       # Abertura do banco, onCreate e seed
+│   ├── seed_data.dart             # Carga inicial de demonstração
+│   └── ocorrencia_repository.dart # Interface + implementação SQLite (async/await)
+├── providers/ocorrencia_provider.dart  # Estado global, CRUD, indicadores e filtros
+├── screens/                       # Home, Lista, Formulário, Detalhes, Sobre
+└── widgets/                       # Componentes reutilizáveis (cards, badges, estados)
+```
 
-test/                          → 26 testes de unidade e widget
-4. Passo a passo de cada camada
-4.1 Model (models/ocorrencia.dart)
+**Fluxo de dados:** `Tela → context.read<OcorrenciaProvider>() → OcorrenciaRepository (async) → SQLite`
+e de volta: `notifyListeners() → context.watch / Consumer / context.select → UI atualizada`.
 
-É a "forma" do dado. Faz três coisas:
+O Provider depende da **interface** `OcorrenciaRepository`, e não do SQLite diretamente, o que permite testá-lo com um repositório falso em memória.
 
-Define os enums com rótulo em português (CategoriaOcorrencia.iluminacao.label → "Iluminação precária").
-Converte para o banco e de volta:
-toMap() transforma o objeto em Map com os nomes das colunas. Booleanos viram 0/1, datas viram texto ISO-8601 e enums viram texto/número.
-Ocorrencia.fromMap() faz o caminho inverso. Se vier um valor desconhecido do banco, o enum cai num valor padrão (fromName/fromValor) em vez de travar o app.
-Guarda uma regra de negócio: isCritica é verdadeiro quando o risco é Alto e a ocorrência não está resolvida.
+### Estrutura da tabela `ocorrencias`
+Criada automaticamente no `onCreate` do banco `rota_segura.db`, já com 5 registros de exemplo (seed).
 
-copyWith() cria uma cópia alterando só alguns campos. É usado na edição e no "marcar como resolvida".
+| Coluna | Tipo | Restrição | Descrição |
+|---|---|---|---|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Identificador |
+| `titulo` | TEXT | NOT NULL | Título curto (5–60 caracteres) |
+| `descricao` | TEXT | NOT NULL | Relato detalhado (15–500 caracteres) |
+| `categoria` | TEXT | NOT NULL | `iluminacao`, `assalto`, `assedio`, `calcada`, `alagamento`, `terrenoAbandonado`, `outro` |
+| `bairro` | TEXT | NOT NULL | Bairro da ocorrência |
+| `referencia` | TEXT | — | Ponto de referência (opcional) |
+| `nivel_risco` | INTEGER | NOT NULL | 1 = Baixo, 2 = Médio, 3 = Alto |
+| `periodo` | TEXT | NOT NULL | `manha`, `tarde`, `noite`, `madrugada` |
+| `resolvida` | INTEGER | NOT NULL DEFAULT 0 | 0/1 |
+| `anonima` | INTEGER | NOT NULL DEFAULT 0 | 0/1 |
+| `data_registro` | TEXT | NOT NULL | Data/hora ISO-8601 |
 
-Ícones e cores dos enums ficam em app_theme.dart (extensions CategoriaVisual e RiscoVisual) para o model não depender do Flutter. Assim ele pode ser testado como Dart puro.
+### Requisitos técnicos atendidos
+| Requisito | Onde |
+|---|---|
+| Widgets e layouts Material | `Scaffold`, `AppBar`, `Card`, `ListTile`, `Row/Column/Expanded`, `Wrap`, `SegmentedButton`… |
+| Componentização e `ThemeData` | `lib/widgets/` e `lib/core/theme/app_theme.dart` |
+| Navegação com rotas nomeadas e argumentos | `AppRoutes.onGenerateRoute` — o **id** vai para Detalhes e o **objeto** `Ocorrencia` vai para o Formulário em modo edição |
+| Provider | `ChangeNotifier`, `MultiProvider`, `ChangeNotifierProvider`, `Consumer`, `context.watch`, `context.read`, `context.select` |
+| ListView | `ListView.separated` com estados de loading, erro, lista vazia e filtro sem resultado |
+| Formulário | `Form`, `GlobalKey<FormState>`, `TextFormField`, `DropdownButtonFormField`, `SwitchListTile`, `CheckboxListTile`, `FormField<bool>` com validação e `SnackBar` de feedback |
+| Assíncrono | Todo acesso ao banco usa `Future` / `async` / `await` |
+| Testes | 26 testes em `test/` (model, validações, Provider e widgets) |
 
-4.2 Banco de dados (data/database_helper.dart)
-É um singleton (DatabaseHelper.instance), então o banco é aberto uma única vez.
-openDatabase(..., onCreate: _onCreate): o onCreate só roda na primeira vez que o app é aberto no aparelho. Nele:
-CREATE TABLE ocorrencias (...);
-insere as 5 ocorrências de SeedData com um batch.
-Isso garante a regra zero-config: o professor roda flutter run e o app já abre com dados, sem configurar nada.
+---
 
-Tabela criada:
+## 4. Galeria de Telas
 
-sql
-CREATE TABLE ocorrencias (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  titulo        TEXT    NOT NULL,
-  descricao     TEXT    NOT NULL,
-  categoria     TEXT    NOT NULL,
-  bairro        TEXT    NOT NULL,
-  referencia    TEXT,
-  nivel_risco   INTEGER NOT NULL,
-  periodo       TEXT    NOT NULL,
-  resolvida     INTEGER NOT NULL DEFAULT 0,
-  anonima       INTEGER NOT NULL DEFAULT 0,
-  data_registro TEXT    NOT NULL
-)
-4.3 Repository (data/ocorrencia_repository.dart)
-dart
-abstract class OcorrenciaRepository {
-  Future<List<Ocorrencia>> getAll();
-  Future<Ocorrencia> insert(Ocorrencia ocorrencia);
-  Future<void> update(Ocorrencia ocorrencia);
-  Future<void> delete(int id);
-}
-É um contrato: diz o que a camada de dados faz, não como.
-SqliteOcorrenciaRepository implementa esse contrato com db.query, db.insert, db.update e db.delete, todos com async/await.
-Como o Provider recebe a interface, nos testes dá para entregar um FakeOcorrenciaRepository (em memória) no lugar do SQLite.
-4.4 Provider (providers/ocorrencia_provider.dart)
+| Home / Dashboard | Listagem | Formulário com validação |
+|---|---|---|
+| ![Home](docs/screenshots/01_home.png) | ![Lista](docs/screenshots/02_lista.png) | ![Formulário](docs/screenshots/03_formulario_validacao.png) |
 
-É o "cérebro" do app. Estende ChangeNotifier e guarda:
+| Detalhes | Edição | Sobre / ODS |
+|---|---|---|
+| ![Detalhes](docs/screenshots/04_detalhes.png) | ![Edição](docs/screenshots/05_edicao.png) | ![Sobre](docs/screenshots/06_sobre_ods.png) |
 
-Estado	Para quê
-_ocorrencias	lista carregada do banco
-_isLoading	mostrar o spinner
-_errorMessage	mostrar a tela de erro
-_filtroCategoria, _ocultarResolvidas	filtros da lista
+---
 
-Ações (CRUD): todas async e todas terminam em notifyListeners():
+## 5. Instruções de Execução
 
-Método	O que faz
-loadOcorrencias()	liga o loading → busca no banco → ordena por data → desliga o loading. Se der erro, preenche errorMessage.
-addOcorrencia(o)	insere no banco, recebe o id gerado e adiciona na lista
-updateOcorrencia(o)	atualiza no banco e substitui o item na lista
-deleteOcorrencia(id)	remove do banco e da lista
-alternarResolvida(o)	atalho: update com resolvida invertido
+### Pré-requisitos
+- Flutter SDK 3.22 ou superior (`flutter --version`);
+- Um **emulador Android**, simulador iOS ou aparelho físico conectado.
 
-Os métodos de escrita retornam bool (deu certo ou não), e a tela usa isso para mostrar o SnackBar de sucesso ou de erro.
+> ℹ️ O pacote `sqflite` funciona em **Android, iOS e macOS**. Ele não roda no navegador (Chrome/Web) nem no Windows/Linux desktop; por isso, execute em um emulador ou celular.
 
-Indicadores (getters calculados), usados na Home:
+### Passo a passo
+```bash
+# 1. Clonar o repositório
+git clone https://github.com/<seu-usuario>/rota_segura.git
+cd rota_segura
 
-total, totalAbertas, totalResolvidas, totalCriticas
-percentualResolvidas
-totalPorCategoria
-bairroMaisCritico: bairro com mais ocorrências abertas; em caso de empate, a ordem alfabética decide.
+# 2. Instalar as dependências
+flutter pub get
 
-Filtros: ocorrenciasFiltradas aplica categoria e "ocultar resolvidas" sobre a lista.
+# 3. Rodar o app (com um emulador aberto ou celular conectado)
+flutter run
 
-4.5 Injeção dos Providers (main.dart)
-dart
-MultiProvider(
-  providers: [
-    Provider<OcorrenciaRepository>(
-      create: (_) => SqliteOcorrenciaRepository(DatabaseHelper.instance),
-    ),
-    ChangeNotifierProvider<OcorrenciaProvider>(
-      create: (context) => OcorrenciaProvider(context.read<OcorrenciaRepository>()),
-    ),
-  ],
-  child: const RotaSeguraApp(),
-)
+# 4. Executar a suíte de testes
+flutter test
+```
 
-O Repository é registrado primeiro e o OcorrenciaProvider o recebe pelo construtor. Os dois ficam acima do MaterialApp, então qualquer tela consegue acessá-los.
+Nenhuma configuração adicional é necessária: na primeira execução o banco SQLite é criado e populado automaticamente.
 
-O primeiro carregamento é disparado na HomeScreen, dentro de addPostFrameCallback, para não notificar listeners no meio de um build.
-
-5. Como a UI conversa com o Provider
-Forma	Quando usar	Onde aparece
-context.watch<OcorrenciaProvider>()	redesenhar o widget a cada mudança	indicadores da Home
-Consumer<OcorrenciaProvider>	redesenhar só um pedaço da tela	corpo da Lista
-context.select<OcorrenciaProvider, T>(...)	redesenhar só quando um valor específico muda	filtro de categoria, ícone de ocultar e a tela de Detalhes
-context.read<OcorrenciaProvider>()	chamar um método sem ouvir mudanças	botões salvar, excluir, filtrar, recarregar
-
-O único setState do app está no formulário e serve só para estado visual local (campo selecionado, botão "salvando..."). Os dados em si sempre passam pelo Provider.
-
-6. Navegação (core/routes/app_routes.dart)
-
-Usa rotas nomeadas com onGenerateRoute:
-
-Rota	Tela	Argumento
-/	Home	—
-/ocorrencias	Lista	—
-/ocorrencias/formulario	Formulário	Ocorrencia?: se vier preenchida, abre em modo edição
-/ocorrencias/detalhes	Detalhes	int: o id da ocorrência
-/sobre	Sobre / ODS	—
-(qualquer outra)	"Página não encontrada"	—
-
-Exemplos:
-
-dart
-// abrir detalhes passando o id
-Navigator.pushNamed(context, AppRoutes.detalhes, arguments: ocorrencia.id);
-
-// abrir o formulário em modo edição passando o objeto
-Navigator.pushNamed(context, AppRoutes.formulario, arguments: ocorrencia);
-
-Por que Detalhes recebe o id e não o objeto? Porque a tela busca o item no Provider com context.select(... findById(id)). Se o usuário editar e voltar, os detalhes já aparecem atualizados, sem precisar repassar nada.
-
-7. As telas, uma por uma
-Home (home_screen.dart)
-Banner com a proposta do app e selos dos ODS 11, 16 e 10.
-4 cards de indicadores (StatCard): Total, Em aberto, Resolvidas e Críticas. Tocar em um deles abre a lista.
-Card com o bairro com mais alertas e uma barra de % de resolvidas.
-Botões "Ver ocorrências" e "Registrar", além do FAB "Nova ocorrência".
-Pull-to-refresh recarrega os dados.
-Lista (ocorrencia_list_screen.dart)
-ListView.separated com um OcorrenciaCard por item.
-Chips horizontais para filtrar por categoria, e um ícone de olho que oculta as resolvidas.
-4 estados tratados:
-carregando → LoadingView;
-erro → ErrorState com botão "Tentar novamente";
-nenhum registro → EmptyState com botão para cadastrar;
-filtro sem resultado → mensagem e botão "Limpar filtros".
-Menu ⋮ em cada card com ações rápidas: Editar, Marcar como resolvida/Reabrir e Excluir.
-Formulário (ocorrencia_form_screen.dart)
-Form com GlobalKey<FormState> e autovalidateMode: onUserInteraction.
-Controles: TextFormField (título, descrição, bairro, referência), DropdownButtonFormField (categoria, período), SegmentedButton (risco), SwitchListTile (anônimo), CheckboxListTile (resolvida, só na edição) e um FormField<bool> (confirmação obrigatória).
-Ao tocar em salvar:
-validate() → se algo falhar, os erros aparecem em vermelho e um SnackBar avisa;
-monta o objeto Ocorrencia;
-chama addOcorrencia ou updateOcorrencia;
-mostra o SnackBar de sucesso e volta com Navigator.pop.
-Detalhes (ocorrencia_detail_screen.dart)
-Cabeçalho com ícone da categoria, título, risco e status.
-Alerta vermelho se a ocorrência for crítica.
-Lista de informações (InfoRow).
-Botões: Marcar como resolvida/Reabrir, Editar (abre o formulário preenchido) e Excluir (pede confirmação num AlertDialog, exclui e volta para a lista).
-Sobre (sobre_screen.dart)
-Problema, solução, público-alvo e a explicação de como o app contribui para cada ODS.
-8. Componentes reutilizáveis (widgets/)
-Widget	Uso
-StatCard	card de indicador da Home
-OcorrenciaCard	item da lista com menu de ações
-RiskBadge / StatusBadge	etiquetas coloridas de risco e status
-LoadingView, EmptyState, ErrorState	estados da lista
-OdsBadge + classe Ods	selos e dados dos ODS
-InfoRow, SectionTitle	linhas e títulos padronizados
-ocorrencia_actions.dart	showConfirmDialog, showAppSnackBar, confirmarExclusao, alternarStatus: lógica de ação compartilhada entre Lista e Detalhes
-9. Exemplo completo: o que acontece ao cadastrar
-O usuário toca em Nova ocorrência → Navigator.pushNamed(context, '/ocorrencias/formulario'), sem argumento, então é um cadastro novo.
-Preenche os campos e toca em Registrar.
-_formKey.currentState!.validate() roda todos os validator de OcorrenciaValidators.
-Passou → context.read<OcorrenciaProvider>().addOcorrencia(novaOcorrencia).
-O Provider chama await repository.insert(...) → db.insert('ocorrencias', map) → o SQLite devolve o id.
-O Provider adiciona o item (já com id) na lista, reordena e chama notifyListeners().
-Automaticamente:
-a Lista (via Consumer) mostra o novo card no topo;
-a Home (via context.watch) atualiza Total, Em aberto e o bairro com mais alertas.
-O formulário mostra o SnackBar "Ocorrência registrada!" e faz Navigator.pop.
-
-Editar e excluir seguem o mesmo caminho, trocando insert por update/delete.
-
-10. Testes (test/)
-
-Rodar com flutter test. São 26 testes:
-
-Arquivo	Qtd.	O que cobre
-ocorrencia_model_test.dart	5	toMap/fromMap ida e volta, conversão 0/1, copyWith, isCritica, fallback dos enums
-validators_test.dart	7	cada regra do formulário e a formatação de datas
-ocorrencia_provider_test.dart	12	load (incluindo os estados de loading), erro do banco, add/update/delete, falha ao inserir, alternar status, indicadores, bairro mais crítico, filtros, provider vazio
-widget_test.dart	2	RiskBadge renderiza o texto; EmptyState dispara a ação
-
-O Provider é testado com o FakeOcorrenciaRepository (test/helpers/), um repositório em memória com a flag deveFalhar para simular erros. Por isso os testes rodam em segundos e não precisam de emulador nem de banco.
-
-As linhas "Erro ao carregar/inserir ocorrência: Exception: Falha simulada no banco" que aparecem no terminal durante os testes são esperadas: vêm dos testes que simulam falhas de propósito.
-
-11. Mapa: requisito da prova → onde está
-Critério	Implementação
-1. Widgets, layout, tema CitizenTech/ODS	screens/, widgets/, app_theme.dart, selos ODS na Home e tela Sobre
-2. ListView dinâmica	ListView.separated + 4 estados na OcorrenciaListScreen
-3. Navegação com parâmetros	AppRoutes.onGenerateRoute: id → Detalhes; Ocorrencia → Formulário
-4. Formulários e validação	Form + GlobalKey + OcorrenciaValidators + SnackBar
-5. Provider	OcorrenciaProvider (ChangeNotifier), MultiProvider, Consumer, watch, read, select
-6. Async + persistência	SqliteOcorrenciaRepository com async/await; onCreate + seed (zero-config)
-7. Testes	26 testes passando em flutter test
-8. GitHub + README	README.md + docs/screenshots/ + este documento
-12. Perguntas que o professor pode fazer
-
-Por que existe a interface OcorrenciaRepository? Para desacoplar o Provider do SQLite. Nos testes entra um repositório falso; no futuro daria para trocar por uma API HTTP sem mexer nas telas nem no Provider.
-
-Onde está o setState? Só no formulário, para estado visual local. Todo o estado de dados está no Provider.
-
-Como os dados de exemplo aparecem sem configurar nada? No onCreate do openDatabase, que só roda na primeira execução e cria a tabela já com o seed.
-
-Por que o app não roda no Chrome/Windows? O sqflite só tem implementação nativa para Android, iOS e macOS. Para rodar, use o emulador Android ou um celular.
-
-O que acontece se apagar o app do emulador? O banco é apagado junto. Na próxima execução o onCreate roda de novo e o seed volta.
+### Testes
+```bash
+flutter test
+```
+| Arquivo | O que valida |
+|---|---|
+| `test/ocorrencia_model_test.dart` | Conversão `toMap`/`fromMap`, `copyWith`, regra `isCritica` e fallback dos enums |
+| `test/validators_test.dart` | Regras do formulário e formatação de datas |
+| `test/ocorrencia_provider_test.dart` | Carregamento, erro, CRUD completo, indicadores e filtros do Provider (com repositório fake) |
+| `test/widget_test.dart` | Renderização de `RiskBadge` e ação do `EmptyState` |
